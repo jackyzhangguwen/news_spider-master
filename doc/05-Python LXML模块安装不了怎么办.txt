@@ -1,0 +1,39 @@
+Python LXML模块死活安装不了怎么办？
+因为要学Scrapy框架来写爬虫，可是每次都是出现这个错误：
+/private/tmp/pip_build_root/lxml/src/lxml/includes/etree_defs.h:14:10: fatal error: 'libxml/xmlversion.h' file not found
+
+#include "libxml/xmlversion.h"
+
+1 error generated.
+
+
+error: command '/usr/bin/clang' failed with exit status 1
+
+----------------------------------------
+
+Cleaning up...
+
+Command /Library/Frameworks/Python.framework/Versions/2.7/Resources/Python.app/Contents/MacOS/Python -c "import setuptools, tokenize;__file__='/private/tmp/pip_build_root/lxml/setup.py';exec(compile(getattr(tokenize, 'open', open)(__file__).read().replace('\r\n', '\n'), __file__, 'exec'))" install --record /tmp/pip-ABNSEN-record/install-record.txt --single-version-externally-managed --compile failed with error code 1 in /private/tmp/pip_build_root/lxml
+
+Storing debug log for failure in /Users/CraxDc/.pip/pip.log
+
+#include "libxml/xmlversion.h"
+
+1 error generated.
+
+
+error: command '/usr/bin/clang' failed with exit status 1
+
+已经百度谷歌一个下午了，能找到的方法都试过了。Stackoverflow论坛的问题也看过了，都是解决不了。
+
+刚从这个大坑里爬出来：
+
+
+1. 安装wheel，命令行运行：
+
+pip install wheel
+2.在这里下载对应的.whl文件，注意别改文件名！ http://www.lfd.uci.edu/~gohlke/pythonlibs/#lxml
+
+3. 进入.whl所在的文件夹，执行命令即可完成安装
+
+pip install 带后缀的完整文件名

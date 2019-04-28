@@ -1,0 +1,51 @@
+解决已经安装requests，却依然提示No module named 'requests'
+原创 2017年08月10日 12:03:08 标签：cmd /python /shell /requests 4891
+Python版本3.5.1，
+
+pip install requests 之后依然提示
+
+Python ImportError: No module named 'requests'
+经过文件搜索和提示，发现是因为安装目录不正确。
+
+一定要切到Python的主目录下安装requests。
+
+如果提示已经安装，那原因是安装的路径不正确，需要先卸载。找到现在的安装目录（会提示），在CMD窗口切过去，执行：
+
+pip uninstall requests
+
+C:\Users\Administrator>pip uninstall requests
+Uninstalling requests-2.14.2:
+  c:\programdata\anaconda3\lib\site-packages\requests
+  c:\programdata\anaconda3\lib\site-packages\requests-2.14.2-py3.6.egg-info
+Proceed (y/n)? y
+  Successfully uninstalled requests-2.14.2
+
+然后，将目录切到Python的安装目录下，执行：
+
+pip install requests.
+
+会出现如下的提示：
+Collecting requests
+  Retrying (Retry(total=4, connect=None, read=None, redirect=None)) after connec
+tion broken by 'NewConnectionError('<pip._vendor.requests.packages.urllib3.conne
+ction.VerifiedHTTPSConnection object at 0x036C1850>: Failed to establish a new c
+onnection: [Errno 11003] getaddrinfo failed',)': /simple/requests/
+  Downloading requests-2.18.3-py2.py3-none-any.whl (88kB)
+    46% |██████████████▉                 | 40kB 251kB/s eta 0:00:
+    57% |██████████████████▌             | 51kB 268kB/s eta 0
+    69% |██████████████████████▏         | 61kB 315kB/s e
+    80% |█████████████████████████▉      | 71kB 341kB/
+    92% |█████████████████████████████▋  | 81kB 38
+    100% |████████████████████████████████| 92kB
+ 359kB/s
+Collecting urllib3<1.23,>=1.21.1 (from requests)
+  Downloading urllib3-1.22-py2.py3-none-any.whl (132kB)
+    38% |████████████▍                   | 51kB 965kB/s eta 0:00:01
+    46% |██████████████▉                 | 61kB 1.1MB/s eta 0:00:
+    54% |█████████████████▍              | 71kB 1.1MB/s eta 0:
+    61% |███████████████████▉            | 81kB 1.0MB/s eta
+    69% |██████████████████████▎         | 92kB 1.1MB/s e
+    77% |████████████████████████▊       | 102kB 1.1MB/
+    85% |███████████████████████████▎    | 112kB 1.0
+
+至此，问题解决。

@@ -1,0 +1,298 @@
+python ajax爬虫 --36Kr为例
+最近在倒腾ajax爬虫，顺便记录一下过程。以36Kr“早期项目”一栏为例，大致分为如下两步。
+
+解析索引页
+难点在于如何获取索引页的url。浏览器打开36Kr,按F12打开开发者工具，切换到Netwotk 面板。AJAX 一般是通过 XMLHttpRequest 对象接口发送请求的，XMLHttpRequest 一般被缩写为 XHR。所以点击XHR，清空监听到的内容。如下图:
+
+点击页面导航栏“早期项目”，method 为 GET 的响应就是我们需要的，选中项目鼠标右键“Copy link address”，内容如下：http://36kr.com/asynces/posts/feed_column_more.json?column=starding,这就是起始url，将url输入到浏览器地址栏，得到索引页面的josn字数据，内容如下：
+
+推荐安装JSONView插件，这样可以看到更好看的JSON格式，展开折叠列等功能。然后，我们根据JSON数据的结构提取资讯标题，时间，和url_code（后文介绍这个字段）。
+
+def parseIndex(url):
+    jsContent = requests.get(url)
+    jsDict = json.loads(jsContent.content)
+
+    for data in jsDict['data']['feed_posts']:
+        # 存放一条资讯
+        item = {}
+        item['title'] = data['title']
+        item['publish_time'] = data['published_at']
+        item['index'] = data['url_code']
+        contentUrl = "http://36kr.com/p/"+str(item['index'])+".html"
+        item['url'] = contentUrl
+        item['summary'] = parseContent(contentUrl)
+        db.append(item)
+
+获取了起始url，那么如何模拟点击“获取更多”？可以认为这是一个翻页按钮，只要获取下一页对应的url即可。清空开发者工具，在“早期项目”栏下点击“获取更多”，同样的方法获取新的链接http://36kr.com/asynces/posts/feed_column_more.json?b_url_code=5046782&column=starding，这就是下一页的url，可将其调整为http://36kr.com/asynces/posts/feed_column_more.json?column=starding&b_url_code=5046782，并将起始url调整为http://36kr.com/asynces/posts/feed_column_more.json?column=starding&b_url_code=，注意到这个b_url_code=5046782是什么鬼，尝试在刚刚获取的json数据里搜索5046782，发现这正是最后一条资讯的url_code，想必大家应该明白了如何生成下一个索引页的链接了吧。
+
+while (totalPage >= 1):
+        parseIndex(url)
+        # 获取最后一条资讯的url_code，拼接下一个索引页的url
+        index = db[-1]['index']
+        url = "http://36kr.com/asynces/posts/feed_column_more.json?column=starding&b_url_code="
+        url += str(index)
+        totalPage -=1
+
+至此，解析索引页的工作结束。
+
+解析资讯页
+点击“早期项目”的第一条资讯，并从浏览器地址栏获得url为http://36kr.com/p/5046804.html,根据前文的经验，很快发现这个5046804正是其url_code,“http://36kr.com/p/”+ url_code +“.html”便是资讯链接，因此这个字段成功获取。如何获取资讯正文呢？
+
+查看网页源码，不难发现正文对应的xpath是“//div/@data-props”，解析后发现response同样为json数据，内容如下，根据json结构便可轻松获取内容。
+
+{
+  "status":{
+     "code":"200",
+     "message":"返回成功"},
+  "data":{
+     "router":"/p/5046804.html",
+  "post":{
+     "id":45805,
+     "title":"大咖拍卖：做线上艺术品拍卖，“经纪人”或许是互联网更容易撬动的一环",
+     "summary":"“传统机构是典型的一级市场，而拍卖是二级市场行为”",
+     "cover":"http://a.36krcnd.com/nil_class/e0edfc83-02c3-4597-9f6f-80fd734bf8f3/1.pic.jpg",
+     "url_code":5046804,
+     "published_at":"2016-05-10T14:24:28.168+08:00",
+     "key":"2c515a1d-364c-4041-b524-b192319310c1",
+     "extra":{
+         "source_urls":null,
+         "jid":"",
+         "close_comment":false,
+         "mobile_views_count":0,
+         "related_company_type":"domestic"
+     },
+    "source_type":"original",
+    "related_company_id":141335,
+    "display_tag_list":["大咖拍卖","艺术收藏","泛娱乐"],
+    "plain_summary":"“传统机构是典型的一级市场，而拍卖是二级市场行为”",
+    "display_content":"...内容略去...",
+    "author":{
+        "id":458247,
+        "domain_path":"/posts/zibing",
+        "display_name":"二水水",
+        "avatar":"https://krid-assets.b0.upaiyun.com/uploads/user/avatar/
+                    327099/09d80114-dabb-4f1f-8cdc-d12f1fe7183c.jpeg!480"
+    },
+    "crowd_funding":"https://mobilecodec.alipay.com/show.htm?code=rex096303svi4ij2pmmckd3",
+    "internal_links":[],
+    "source_message":"原创文章，作者：二水水"
+  }
+ }
+}
+
+def parseContent(contenturl):
+    res = html.parse(contenturl).xpath("//div/@data-props")[0]
+    data = json.loads(res)
+    # 获取摘要，资讯正文对应字段为display_content，此处并未获取
+    return data['data']['post']['summary']
+
+至此整个工作接近尾声，下面组织一下代码。
+
+完整代码如下
+#-*-coding:utf8-*-
+
+import requests
+import json
+from lxml import html
+
+# 列表存储爬取的资讯
+db = []
+
+def parseContent(url):
+    res = html.parse(url).xpath("//div/@data-props")[0]
+    data = json.loads(res)
+    return data['data']['post']['summary']
+
+def parseIndex(url):
+    jsContent = requests.get(url)
+    jsDict = json.loads(jsContent.content)
+
+    for data in jsDict['data']['feed_posts']:
+        # 每条资讯对应一个字典
+        item = {}
+        item['title'] = data['title']
+        item['publish_time'] = data['published_at']
+        item['index'] = data['url_code']
+        contentUrl = "http://36kr.com/p/" + str(item['index']) + ".html"
+        item['url'] = contentUrl
+        # 解析正文页
+        item['summary'] = parseContent(contentUrl)
+        db.append(item)
+
+def main(totalPage):
+    '''
+    totalPage: 抓取的索引页页数
+    '''
+    # 起始url
+    url = "http://36kr.com/asynces/posts/feed_column_more.json?column=starding&b_url_code="
+    while (totalPage >= 1):
+        # 解析索引页
+        parseIndex(url)
+        # 获取最后一条资讯的url_code
+        index = db[-1]['index']
+        # 拼接下一个索引页的url
+        url = "http://36kr.com/asynces/posts/feed_column_more.json?column=starding&b_url_code="
+        url += str(index)
+        totalPage -=1
+
+    # 打印数据
+    print len(db)
+    for item in db:
+        print item
+
+if __name__ == '__main__':
+    main(3) # 设置为抓取3页资讯
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+36kr crawler in python
+
+  #!/usr/bin/env python  
+  #-*- coding:utf-8 -*-  
+  
+  import time
+  import json
+  import requests
+  import re
+  
+  def get_html_encode(content_type, page_raw):
+      '''
+      : param content_type : str, response header的参数 一般有编码方式
+      : param page_raw : str, html源码信息，里面的meta里面一般有编码方式
+      : return : 返回编码方式
+      '''
+      encode_list = re.findall(
+          r'charset=([0-9a-zA-Z_-]+)', content_type, re.I
+      )
+      if encode_list:
+          return encode_list[0]
+      encode_list = re.findall(
+          r'<meta.+charset=[\'"]*([0-9a-zA-Z_-]+)', page_raw, re.I
+      )
+      if encode_list:
+          return encode_list[0]
+  
+  def _get_craw(url, headers, get_payload):
+      '''
+      : param url:str,Request URL
+      : param headers: dict,Request Headers
+      : param get_payload: dict,Query String Parameters
+      : return:
+      '''
+      r = requests.get(url, headers=headers, params=get_payload)
+      if r.status_code != 200:
+          raise Exception(r.status_code)
+      content_type = r.headers['Content-Type']
+      if 'text/html' in content_type:
+          encoding = get_html_encode(content_type, r.text)
+          if encoding:
+              r.encoding = encoding
+          return r.text
+      elif 'application/json' in content_type:
+          return r.text
+      elif 'application/pdf' in content_type:
+          return r.content    # 返回字节
+      elif 'image' in content_type:# 图片
+          return r.content    # 返回字节
+      else:
+          return r.content
+  
+  def _post_craw(url, headers, get_payload):
+      '''
+      : param url:str,Request URL
+      : param headers: dict,Request Headers
+      : param get_payload: dict,Query String Parameters
+      : return:
+      '''
+      r = requests.post(url, headers=headers, params=get_payload)
+      if r.status_code != 200:
+          raise Exception(r.status_code)
+      content_type = r.headers['Content-Type']
+      if 'text/html' in content_type:
+          encoding = get_html_encode(content_type, r.text)
+          if encoding:
+              r.encoding = encoding
+          return r.text
+      elif 'application/json' in content_type:
+          return r.text
+      elif 'application/pdf' in content_type:
+          return r.content    # 返回字节
+      elif 'image' in content_type:# 图片
+          return r.content    # 返回字节
+      else:
+          return r.content
+  
+  def _craw(method, url, headers=None, payload=None):
+     try:
+         if method == 'get':
+             return _get_craw(url, headers, payload)
+         elif method == 'post':
+             return _post_craw(url, headers, payload)
+         else:
+             raise Exception('method is wrong')
+     except Exception as e:
+         print(url)
+         print(e)
+ 
+ def _json(data):
+     # 解析json
+     data = json.loads(data)
+     articles = data['data']['items']
+     print('文章id', '文章封面图片链接', '文章标题')
+     for article in articles:
+         print(article['id'], article['cover'], article['title'])
+ 
+ def _image(data):
+     # 抓取图片
+     data = json.loads(data)
+     articles = data['data']['items']
+     for article in articles:
+         cover_url = article['cover']
+         article_id = article['id']
+         image_bytes = _craw('get', cover_url)
+         with open('img/{}.jpg'.format(article_id), 'wb') as f:
+             # 将字节写入文件，文件需要二进制形式
+             f.write(image_bytes)
+ 
+ if __name__ == '__main__':
+     url = 'http://36kr.com/api/search-column/mainsite'
+     get_payload = {
+         'per_page':20,
+         'page':1,
+         '_':str(int(time.time() * 1000))
+     }
+     headers = {
+         'Host':'36kr.com',
+         'User-Agent':'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36'
+     }
+     data = _craw('get', url, headers, get_payload)
+     # _json(data)
+     # _image(data)
+     # 抓取详情页
+     data = json.loads(data)
+     articles = data['data']['items']
+     for article in articles:
+         url = 'http://36kr.com/p/{}.html'.format(article['id'])
+         print(url)
+         html = _craw('get', url, headers)
+         print(html)
+
+使用xpath进行爬虫前的小知识点，包括通过chrome对网页的抓包，判断网址的类型进行不同的操作
+
+查看开发者工具network里面的信息，里面的信息比较多，因为html页面刚开始一般会加载js和css文件，我们不去管这些。我们抓取的是文本信息，所有我们一般查看type类型为docment和xhr的。docment类型一般的返回结果是html源码，xhr请求的返回结果一般是json格式。
+
+鼠标往下滚动，触发翻页，有一个xhr请求，返回的结果，即是我们需要的文章列表页面的数据
+
+可以看到有4部分：
+（1）General一般包括请求的url，请求方法（get或者post），http请求服务器返回的状态码，200说明请求成功。
+（2）Response Headers 是服务器返回的headers信息，一般会向浏览器设置cookie信息什么的，这里我们先不管。
+（3）Request Headers 这一部分对于我们爬虫比较重要，是浏览器向服务器请求头信息，包括了浏览器当前状态的信息。一般我们要注意Cookie, Host, Referer, User-Agent等信息。
+（4）Query String Parameters 请求参数，get方法请求即是url的问号后面那些东西，post方法是一些表单数据或者一些敏感信息，post方法参数在传输过程中会加密，所以post方法请求，保密性比较好。
+ 
+到这里这个页面的抓包分析结束，Chrome抓包分析就是要找到我们所需要的数据是哪条请求链接，以及这个请求链接的Request Headers的参数和Query String Parameters参数。
+从第一部分抓包分析可知：
+（1）url为http://36kr.com/api/search-column/mainsite
+（2）请求方法为get
+（3）请求参数为per_page=20&page=2&_=1523873453996，从参数可知per_page=20是每页展示20篇文章，page=2为第2页，_=1523873453996即 _ 这个参数是请求当前时间点的时间戳
+（4）headers当中的参数，一般比较重要的是：User-Agent, Referer, Host, Cookie等。如果遇到反爬，首先我们检查的就是headers，在可以获取到数据的情况下，headers里面的参数可以尽量少，获取不到的情况，就多添加一些，直到能够获取到数据。
